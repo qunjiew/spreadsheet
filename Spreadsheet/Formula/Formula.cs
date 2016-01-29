@@ -3,6 +3,7 @@
 // JLZ Repaired pair of mistakes, January 23, 2016
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -19,6 +20,8 @@ namespace Formulas
     /// </summary>
     public class Formula
     {
+        private ArrayList list = new ArrayList();
+
         /// <summary>
         /// Creates a Formula from a string that consists of a standard infix expression composed
         /// from non-negative floating-point numbers (using C#-like syntax for double/int literals), 
@@ -41,7 +44,91 @@ namespace Formulas
         /// </summary>
         public Formula(String formula)
         {
+            int numOfOp = 0;
+            int numOfCp = 0;
+            IEnumerable<string> tokens = GetTokens(formula);
+
+            var e = tokens.First();
+            var lastE = tokens.Last();
+
+            if(e == null || e ==" ")
+            {
+                throw new FormulaFormatException("no elements");
+            }
+
+            if (!(lastE.Equals(")") || ifVar(lastE) || ifDouble(lastE)))
+            {
+                throw new FormulaFormatException("the last elements is invalid");
+            }
+
+            if (!(e.Equals("(") || ifVar(e) || ifDouble(e)))
+            {
+                throw new FormulaFormatException("the first elements is invalid");
+            }
+            bool a = true;
+            int i = 0;
+            string pre = "";
+            foreach (string s in tokens)
+            {
+                
+                 if(a)
+                {
+                    a = false;
+                    pre = s;
+                }
+                if (s.Equals("("))
+                    numOfOp++;
+                if (s.Equals(")"))
+                    numOfCp++;
+                if (numOfCp > numOfOp)
+                    throw new FormulaFormatException("wrong of using parentheses");
+                if (i >= 1)
+                {
+                    if (pre.Equals("(")||isOp(pre))
+                    {
+                        if (!(s.Equals("(") || ifDouble(s) || ifVar(s)))
+                            throw new FormulaFormatException("wrong token followed the openning parentheses");
+                    }
+
+                    if (ifDouble(pre) || pre.Equals((")")) || ifVar(pre))
+                    {
+                        if (!(s.Equals(")") || isOp(s)))
+                            throw new FormulaFormatException("wrong token before the closing parentheses");
+                    }
+                }
+                pre = s;
+                list.Add(s);
+                i++;           
+            }
+
+            if (numOfOp != numOfCp)
+                throw new FormulaFormatException("The number opening parentheses must equal the total number of closing parentheses");
+
         }
+        private static bool ifVar(string s)
+        {
+             return Regex.IsMatch(s, @"[a-zA-Z][0-9a-zA-Z]*");
+        }
+
+        private static bool ifDouble(string s)
+        {
+            double num;
+            if (Double.TryParse(s, out num))
+            {
+                if (num < 0)
+                    return true;
+                else
+                    return true;
+            }
+            else
+                return false;
+        }
+
+        private static bool isOp(string s)
+        {
+            return Regex.IsMatch(s, @"[\+\-*/]");
+        }
+
         /// <summary>
         /// Evaluates this Formula, using the Lookup delegate to determine the values of variables.  (The
         /// delegate takes a variable name as a parameter and returns its value (if it has one) or throws
@@ -53,7 +140,164 @@ namespace Formulas
         /// </summary>
         public double Evaluate(Lookup lookup)
         {
-            return 0;
+
+            Stack<double> num = new Stack<double>();
+            Stack<string> op = new Stack<string>();
+
+            foreach(string e in list)
+            {
+                if (ifDouble(e))
+                {
+                    double temp;
+                    Double.TryParse(e,out temp);
+                    if(op.Count()!=0&&op.Peek().Equals("*"))
+                    {
+                        double temp1 = num.Pop();
+                        op.Pop();
+                        num.Push(temp * temp1);
+                    }
+                    else if (op.Count() != 0 && op.Peek().Equals("/"))
+                    {
+                        double temp1 = num.Pop();
+                        op.Pop();
+                        if (temp1 == 0)
+                            throw new FormulaEvaluationException("can not divided by 0");
+                        else
+                            num.Push(temp / temp1);
+                    }
+                    else
+                        num.Push(temp);
+                }
+
+                else if (ifVar(e))
+                {
+                    double temp;
+                    try
+                    {
+                        temp = lookup(e);
+                    }
+                    catch (UndefinedVariableException)
+                    {                    
+                    }
+                    temp = lookup(e);
+                    if (op.Count() != 0 && op.Peek().Equals("*"))
+                    {
+                        double temp1 = num.Pop();
+                        op.Pop();
+                        num.Push(temp * temp1);
+                    }
+                    else if (op.Count() != 0 && op.Peek().Equals("/"))
+                    {
+                        double temp1 = num.Pop();
+                        op.Pop();
+                        if (temp1 == 0)
+                            throw new FormulaEvaluationException("can not divided by 0");
+                        else
+                            num.Push(temp / temp1);
+                    }
+                    else
+                        num.Push(temp);
+                }
+
+                else if(e.Equals("+")||e.Equals("-"))
+                {
+                    if(op.Count() != 0 && op.Peek().Equals("+"))
+                    {
+                        op.Pop();
+                        double temp1 = num.Pop();
+                        double temp2 = num.Pop();
+                        num.Push(temp1 + temp2);
+                        op.Push(e);
+                    }
+                    else if (op.Count() != 0 && op.Peek().Equals("-"))
+                    {
+                        op.Pop();
+                        double temp1 = num.Pop();
+                        double temp2 = num.Pop();
+                        num.Push(temp1 - temp2);
+                        op.Push(e);
+                    }
+                    else
+                        op.Push(e);
+                }
+
+                else if(e.Equals("*") || e.Equals("/"))
+                {
+                    op.Push(e);
+                }
+
+                else if (e.Equals("("))
+                {
+                    op.Push(e);
+                }
+                
+                else if (e.Equals(")"))
+                {
+                    if (op.Count() != 0 && op.Peek().Equals("+"))
+                    {
+                        op.Pop();
+                        double temp1 = num.Pop();
+                        double temp2 = num.Pop();
+                        num.Push(temp1 + temp2);
+                        op.Push(e);
+                        op.Pop();
+                    }
+                    else if (op.Count() != 0 && op.Peek().Equals("-"))
+                    {
+                        op.Pop();
+                        double temp1 = num.Pop();
+                        double temp2 = num.Pop();
+                        num.Push(temp1 - temp2);
+                        op.Push(e);
+                        op.Pop();
+                    }
+                    else
+                        op.Pop();
+                    if (op.Count() != 0 && op.Peek().Equals("*"))
+                    {
+                        op.Pop();
+                        double temp1 = num.Pop();
+                        double temp2 = num.Pop();
+                        num.Push(temp1 * temp2);
+                    }
+                    else if (op.Count() != 0 && op.Peek().Equals("/"))
+                    {
+                        op.Pop();
+                        double temp1 = num.Pop();
+                        double temp2 = num.Pop();
+                        num.Push(temp1 / temp2);
+                    }
+                }
+            }
+            if (op.Count() == 0)
+            {
+                return num.Pop();
+            }
+            else
+            {
+                if (op.Count() != 0 && op.Peek().Equals("+"))
+                {
+                    double temp1 = num.Pop();
+                    double temp2 = num.Pop();
+                    return temp1 + temp2;
+                }
+                else
+                {
+                    double temp1 = num.Pop();
+                    double temp2 = num.Pop();
+                    return temp1 - temp2;
+                }           
+            }
+                
+              
+           
+
+
+        }
+
+        private bool ifDouble(object e)
+        {
+            throw new NotImplementedException();
         }
 
         /// <summary>
